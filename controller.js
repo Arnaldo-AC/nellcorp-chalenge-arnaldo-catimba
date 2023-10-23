@@ -1,39 +1,59 @@
-// controller.js
-const db = require('./db');
+const db = require('./db'); // Importando as configurações do banco de dados
 
+/* FUNÇÃO PARA FAZER O DEPÓSITO NA CONTA */
 const depositToAccount = (req, res) => {
     const { account_id, amount } = req.body;
   
     try {
-      // Verifique se os parâmetros são válidos
+      // Verificar se os parâmetros são válidos
       if (!account_id || amount <= 0) {
         return res.status(400).json({ error: 'Parâmetros inválidos' });
       }
   
-      // Execute a lógica de depósito, atualizando o saldo da conta
-      db.query('UPDATE accounts SET balance = balance + $1 WHERE account_id = $2', [amount, account_id], (error, result) => {
+      // Verificar se a conta existe antes de prosseguir
+      db.query('SELECT balance FROM accounts WHERE account_id = $1', [account_id], (error, result) => {
         if (error) {
-          console.error('Erro ao fazer o depósito:', error);
-          return res.status(500).json({ error: 'Erro ao fazer o depósito' });
+          console.error('Erro ao verificar conta:', error);
+          return res.status(500).json({ error: 'Erro ao verificar conta' });
         }
   
-        // Registre a transação na tabela de transações
-        const transactionDetails = {
-          account_id_from: null, // Preencha com o valor correto, se aplicável
-          account_id_to: account_id,
-          amount: amount,
-          transaction_type: 'depósito',
-          timestamp: new Date(),
-        };
+        // Verificar se a consulta não retornou resultados (conta não encontrada)
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Conta não encontrada' });
+        }
   
-        db.query('INSERT INTO transactions (account_id_from, account_id_to, amount, transaction_type, timestamp) VALUES ($1, $2, $3, $4, $5)', 
-          [transactionDetails.account_id_from, transactionDetails.account_id_to, transactionDetails.amount, transactionDetails.transaction_type, transactionDetails.timestamp], (transactionError) => {
-          if (transactionError) {
-            console.error('Erro ao registrar a transação:', transactionError);
-            // Aqui você pode optar por não interromper a resposta, mas registrar um erro de transação
+        // Executar a lógica de depósito, actualizando o saldo da conta
+        db.query('UPDATE accounts SET balance = balance + $1 WHERE account_id = $2', [amount, account_id], (depositError, depositResult) => {
+          if (depositError) {
+            console.error('Erro ao fazer o depósito:', depositError);
+            return res.status(500).json({ error: 'Erro ao fazer o depósito' });
           }
   
-          res.status(200).json({ message: 'Depósito efetuado com sucesso' });
+          // Registrar a transação na tabela de transações
+          const transactionDetails = {
+            account_id_from: null,
+            account_id_to: account_id,
+            amount: amount,
+            transaction_type: 'deposito',
+            timestamp: new Date(),
+          };
+  
+          db.query(
+            'INSERT INTO transactions (account_id_from, account_id_to, amount, transaction_type, timestamp) VALUES ($1, $2, $3, $4, $5)',
+            [
+              transactionDetails.account_id_from,
+              transactionDetails.account_id_to,
+              transactionDetails.amount,
+              transactionDetails.transaction_type,
+              transactionDetails.timestamp,
+            ],
+            (transactionError) => {
+              if (transactionError) {
+                console.error('Erro ao registrar a transação:', transactionError);
+              }
+              res.status(200).json({ message: 'Depósito efectuado com sucesso' });
+            }
+          );
         });
       });
     } catch (error) {
@@ -42,17 +62,18 @@ const depositToAccount = (req, res) => {
     }
   };
   
-
+  
+/* FUNÇÃO PARA FAZER O LEVANTAMENTO NA CONTA */
   const withdrawFromAccount = (req, res) => {
     const { account_id, amount } = req.body;
   
     try {
-      // Verifique se os parâmetros são válidos
+      // Verificar se os parâmetros são válidos
       if (!account_id || amount <= 0) {
         return res.status(400).json({ error: 'Parâmetros inválidos' });
       }
   
-      // Verifique se a conta existe
+      // Verificar se a conta existe
       db.query('SELECT balance FROM accounts WHERE account_id = $1', [account_id], (error, result) => {
         try {
           if (error) {
@@ -66,22 +87,22 @@ const depositToAccount = (req, res) => {
   
           const balance = result.rows[0].balance;
   
-          // Verifique se o saldo da conta é suficiente para o levantamento
+          // Verificar se o saldo da conta é suficiente para o levantamento
           if (balance < amount) {
             return res.status(400).json({ error: 'Saldo insuficiente na conta' });
           }
   
-          // Execute a lógica de levantamento, atualizando o saldo da conta
+          // Executar a lógica de levantamento, actualizando o saldo da conta
           db.query('UPDATE accounts SET balance = balance - $1 WHERE account_id = $2', [amount, account_id], (withdrawError) => {
             if (withdrawError) {
               console.error('Erro ao fazer o levantamento:', withdrawError);
               return res.status(500).json({ error: 'Erro ao fazer o levantamento' });
             }
   
-            // Registre a transação de levantamento na tabela de transações
+            // Registrar a transação de levantamento na tabela de transações
             const transactionDetails = {
               account_id_from: account_id,
-              account_id_to: null, // Preencha com o valor correto, se aplicável
+              account_id_to: null, // 
               amount: -amount, // Valor negativo para representar o levantamento
               transaction_type: 'levantamento',
               timestamp: new Date(),
@@ -91,10 +112,9 @@ const depositToAccount = (req, res) => {
               [transactionDetails.account_id_from, transactionDetails.account_id_to, transactionDetails.amount, transactionDetails.transaction_type, transactionDetails.timestamp], (transactionError) => {
               if (transactionError) {
                 console.error('Erro ao registrar a transação de levantamento:', transactionError);
-                // Aqui você pode optar por não interromper a resposta, mas registrar um erro de transação
               }
   
-              res.status(200).json({ message: 'Levantamento efetuado com sucesso' });
+              res.status(200).json({ message: 'Levantamento efectuado com sucesso' });
             });
           });
         } catch (innerError) {
@@ -108,17 +128,17 @@ const depositToAccount = (req, res) => {
     }
   };
   
-  
+  /* FUNÇÃO PARA FAZER A TRANSFERÊNCIA ENTRE AS DUAS CONTAS */
   const transferBetweenAccounts = (req, res) => {
     const { sender_account_id, receiver_account_id, amount } = req.body;
   
     try {
-      // Verifique se os parâmetros são válidos
+      // Verificar se os parâmetros são válidos
       if (!sender_account_id || !receiver_account_id || amount <= 0) {
         return res.status(400).json({ error: 'Parâmetros inválidos' });
       }
   
-      // Verifique se as contas existem e obtenha seus saldos
+      // Verificar se as contas existem e obter seus saldos
       db.query('SELECT balance FROM accounts WHERE account_id = $1', [sender_account_id], (error, senderResult) => {
         try {
           if (error) {
@@ -132,12 +152,12 @@ const depositToAccount = (req, res) => {
   
           const senderBalance = senderResult.rows[0].balance;
   
-          // Verifique se a conta remetente tem saldo suficiente para a transferência
+          // Verificar se a conta remetente tem saldo suficiente para a transferência
           if (senderBalance < amount) {
             return res.status(400).json({ error: 'Saldo insuficiente na conta remetente' });
           }
   
-          // Obtenha o saldo da conta destinatária
+          // Obter o saldo da conta destinatária
           db.query('SELECT balance FROM accounts WHERE account_id = $1', [receiver_account_id], (error, receiverResult) => {
             try {
               if (error) {
@@ -176,7 +196,7 @@ const depositToAccount = (req, res) => {
                       });
                     }
   
-                    // Registre a transação de transferência na tabela de transações
+                    // Registrar a transação de transferência na tabela de transações
                     const transactionDetails = {
                       account_id_from: sender_account_id,
                       account_id_to: receiver_account_id,
@@ -201,7 +221,7 @@ const depositToAccount = (req, res) => {
                           return res.status(500).json({ error: 'Erro ao confirmar a transação' });
                         }
   
-                        res.status(200).json({ message: 'Transferência efetuada com sucesso' });
+                        res.status(200).json({ message: 'Transferência efectuada com sucesso' });
                       });
                     });
                   });
@@ -222,17 +242,18 @@ const depositToAccount = (req, res) => {
       return res.status(500).json({ error: 'Erro na validação de parâmetros' });
     }
   };
-  
+
+  /* FUNÇÃO PARA FAZER O REEMBOLSO DE UMA TRANSAÇÃO */
   const refundTransaction = (req, res) => {
     const { transaction_id, amount } = req.body;
   
     try {
-      // Verifique se os parâmetros são válidos
+      // Verificar se os parâmetros são válidos
       if (!transaction_id || amount <= 0) {
         return res.status(400).json({ error: 'Parâmetros inválidos' });
       }
   
-      // Verifique se a transação existe e obtenha as informações necessárias
+      // Verificar se a transação existe e obter as informações necessárias
       db.query('SELECT account_id_from, account_id_to FROM transactions WHERE transaction_id = $1', [transaction_id], (error, result) => {
         try {
           if (error) {
@@ -279,7 +300,7 @@ const depositToAccount = (req, res) => {
                     return res.status(500).json({ error: 'Erro ao confirmar a transação de reembolso' });
                   }
   
-                  res.status(200).json({ message: 'Reembolso efetuado com sucesso' });
+                  res.status(200).json({ message: 'Reembolso efectuado com sucesso' });
                 });
               });
             });
@@ -295,16 +316,17 @@ const depositToAccount = (req, res) => {
     }
   };
   
+  /* FUNÇÃO PARA BUSCAR O SALDO NUMA DETERMINADA CONTA */
   const getAccountBalance = (req, res) => {
-    const { account_id } = req.params; // Supondo que você está passando o account_id como um parâmetro de rota
+    const { account_id } = req.params; // Supondo que está a ser passado o account_id como um parâmetro de rota
   
     try {
-      // Verifique se o parâmetro é válido
+      // Verificar se o parâmetro é válido
       if (!account_id) {
         return res.status(400).json({ error: 'Parâmetro inválido' });
       }
   
-      // Consulte o saldo da conta
+      // Consultar o saldo da conta
       db.query('SELECT balance FROM accounts WHERE account_id = $1', [account_id], (error, result) => {
         if (error) {
           console.error('Erro ao obter saldo da conta:', error);
@@ -317,7 +339,7 @@ const depositToAccount = (req, res) => {
   
         const balance = result.rows[0].balance;
   
-        res.status(200).json({ balance: balance });
+        res.status(200).json({ saldo: balance });
       });
     } catch (error) {
       console.error('Erro ao processar a solicitação:', error);
@@ -325,6 +347,7 @@ const depositToAccount = (req, res) => {
     }
   };
 
+/* FUNÇÃO PARA VER O HISTÓRICO DE TRANSAÇÕES DE UMA DETERMINADA CONTA */
   const getAccountTransactions = (req, res) => {
     const { account_id } = req.params; // Supondo que você está passando o account_id como um parâmetro de rota
   
