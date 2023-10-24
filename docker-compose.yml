@@ -1,0 +1,38 @@
+version: '3'
+services:
+  postgres:
+    image: postgres:latest
+    container_name: my-postgres-container
+    environment:
+      POSTGRES_DB: db_nellcorp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: my-virtual-accounts-app
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:mypassword@postgres:5432/db_nellcorp
+    command: npm start
+    working_dir: /usr/src/app
+    volumes:
+      - ./app:/usr/src/app
+    networks:
+      - my-network
+
+volumes:
+  postgres-data:
+
+networks:
+  my-network:
+    driver: bridge
